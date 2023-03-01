@@ -16,8 +16,10 @@ from itertools import repeat
 from multiprocessing.pool import Pool, ThreadPool
 from pathlib import Path
 from threading import Thread
+import soundfile as sf
 from urllib.parse import urlparse
-
+import matplotlib.pyplot as plt
+from scipy import signal
 import numpy as np
 import psutil
 import torch
@@ -235,6 +237,50 @@ class LoadScreenshots:
         self.frame += 1
         return str(self.screen), im, im0, None, s  # screen, img, original img, im0s, s
 
+class LoadSpectros:
+    def __init__(self, folder, sampleDur, sr, img_size, stride=32, auto=True):
+        self.folder, self.sampleDur, self.sr, self.img_size, self.stride, self.auto = folder, sampleDur, sr, img_size, stride, auto
+        self.files = os.listdir(folder)
+        self.mode = 'image'
+        self.samples = []
+        for fn in tqdm(os.listdir(folder), desc='Dataset initialization', leave=False):
+            try:
+                info = sf.info(os.path.join(folder, fn))
+                duration, fs = info.duration, info.samplerate
+                self.samples.extend([{'fn':fn, 'offset':offset, 'fs':fs} for offset in np.arange(0, duration+.01 - sampleDur, sampleDur)])
+            except:
+                print('failed with '+fn)
+                continue
+        self.nf = len(self.samples)
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __iter__(self):
+        self.count = 0
+        return self
+
+    def __next__(self):
+        if self.count == len(self):
+            raise StopIteration
+        row = self.samples[self.count]
+        self.count += 1
+        sig, fs = sf.read(os.path.join(self.folder, row['fn']), start=int(row['offset']*row['fs']), stop=int((row['offset']+self.sampleDur)*row['fs']), always_2d=True)
+        sig = sig[:,0]
+        if fs != self.sr:
+            sig = signal.resample(sig, int(len(sig)*self.sr/fs))
+        fig = plt.figure()
+        f, t, stft  = signal.spectrogram(sig, nperseg=1024, noverlap=512)
+        stft = np.log10(np.abs(stft))
+        axim = plt.imshow(stft, aspect = "auto", interpolation = None, cmap = 'jet', vmin=np.mean(stft))
+        plt.subplots_adjust(top=1, bottom=0, left=0, right=1)
+        im0 = axim.make_image(fig.canvas)[0][:,:,:-1][:,:,::-1]
+        plt.close()
+        im = letterbox(im0, self.img_size, stride=self.stride, auto=self.auto)[0]  # padded resize
+        im = im.transpose((2, 0, 1))  # HWC to CHW
+        im = np.ascontiguousarray(im)  # contiguous
+        s = f'image {self.count}/{self.nf} {row}: '
+        return f"{row['fn']}_{row['offset']}.jpg", im, im0, None, s
 
 class LoadImages:
     # YOLOv5 image/video dataloader, i.e. `python detect.py --source image.jpg/vid.mp4`
