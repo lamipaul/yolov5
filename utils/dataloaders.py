@@ -264,6 +264,7 @@ class LoadSpectros:
         if self.count == len(self):
             raise StopIteration
         row = self.samples[self.count]
+        path = f"{row['fn']}_{row['offset']}.jpg"
         self.count += 1
         sig, fs = sf.read(os.path.join(self.folder, row['fn']), start=int(row['offset']*row['fs']), stop=int((row['offset']+self.sampleDur)*row['fs']), always_2d=True)
         sig = sig[:,0]
@@ -275,12 +276,14 @@ class LoadSpectros:
         axim = plt.imshow(stft, aspect = "auto", interpolation = None, cmap = 'jet', vmin=np.mean(stft))
         plt.subplots_adjust(top=1, bottom=0, left=0, right=1)
         im0 = axim.make_image(fig.canvas)[0][:,:,:-1][:,:,::-1]
+        cv2.imwrite(path, im0)
+        im0 = cv2.imread(path)
         plt.close()
         im = letterbox(im0, self.img_size, stride=self.stride, auto=self.auto)[0]  # padded resize
-        im = im.transpose((2, 0, 1))  # HWC to CHW
+        im = im.transpose((2, 0, 1))[::-1]  # HWC to CHW
         im = np.ascontiguousarray(im)  # contiguous
         s = f'image {self.count}/{self.nf} {row}: '
-        return f"{row['fn']}_{row['offset']}.jpg", im, im0, None, s
+        return path, im, im0, None, s
 
 class LoadImages:
     # YOLOv5 image/video dataloader, i.e. `python detect.py --source image.jpg/vid.mp4`
