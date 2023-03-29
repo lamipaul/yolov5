@@ -278,6 +278,7 @@ class LoadSpectros:
         im0 = axim.make_image(fig.canvas)[0][:,:,:-1][:,:,::-1]
         cv2.imwrite(path, im0)
         im0 = cv2.imread(path)
+        os.system('rm '+path)
         plt.close()
         im = letterbox(im0, self.img_size, stride=self.stride, auto=self.auto)[0]  # padded resize
         im = im.transpose((2, 0, 1))[::-1]  # HWC to CHW
